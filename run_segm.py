@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Simple program to load an image, run a semantic segmentation model on it
 # (from MXNet model zoo) and save the results in a compressed numpy file.
 import argparse
