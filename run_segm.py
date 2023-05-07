@@ -15,6 +15,7 @@ from gluoncv.data.transforms.presets.segmentation import test_transform
 parser = argparse.ArgumentParser(prog='run_segm.py', description='Run semantic segmentation')
 parser.add_argument('filename', metavar='FILENAME', help='Image filename to process')
 parser.add_argument('--verbose', '-v', action='store_true', default=False, help='Run in verbose mode')
+parser.add_argument('--overwrite', '-O', action='store_true', default=False, help='Overwrite any existing output file')
 parser.add_argument('--modelname', metavar='MODEL', help='Use a specified model (from gluoncv.model_zoo)',default='psp_resnet101_citys')
 parser.add_argument('--gpu', '-G', metavar='N', nargs='?', default=None, const=True, help='Use GPU (optionally specify which one)')
 parser.add_argument('--outputfile', '-o', metavar='FILENAME', default=None, help='Output filename (default is input filename changed to have ".npz" suffix)')
@@ -28,6 +29,19 @@ def main():
     def vlog(s):
         if args.verbose:
             print(s)
+
+    if args.outputfile is None:
+        outputfile = Path(args.filename).with_suffix('.npz')
+    else:
+        outputfile = Path(outputfile)
+    if outputfile.exists() and not args.overwrite:
+        try:
+            with np.load(outputfile) as f:
+                if 'predict' in f:
+                    vlog(f'Skipping existing outputfile "{outputfile}".')
+                    return
+        except:
+            pass
 
     if args.gpu is not None:
         vlog(f'Using GPU ({args.gpu}).')
@@ -69,11 +83,6 @@ def main():
 
     t2 = time()
     vlog(f'Complete. Runtime: {(t2-t1):.2f}s.')
-
-    if args.outputfile is None:
-        outputfile = Path(args.filename).with_suffix('.npz')
-    else:
-        outputfile = Path(outputfile)
 
     vlog(f'Saving predictions (shape={predict.shape}) into "{outputfile}".')
     np.savez_compressed(str(outputfile), predict=predict, modelname=args.modelname)
