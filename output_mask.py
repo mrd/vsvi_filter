@@ -72,13 +72,13 @@ def main():
         predict = np.load(filename)
         modelname = None
 
+    vlog(f'Matrix shape: {predict.shape}.')
     if predict.shape[1] >= predict.shape[0] * 2:
         # panoramic
         predictplus = np.append(predict, predict[:,:predict.shape[1]//4],axis=1)
         vlog(f'Assuming panoramic input, extending width to {predictplus.shape[1]}.')
     else:
         predictplus = predict
-
 
     distance=args.road_peaks_distance
     if distance is None:
