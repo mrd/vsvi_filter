@@ -73,7 +73,7 @@ def main():
     img = test_transform(img, ctx)
 
     vlog(f'Loading model "{args.modelname}".')
-    model = gluoncv.model_zoo.get_model(args.modelname, pretrained=True)
+    model = gluoncv.model_zoo.get_model(args.modelname, pretrained=True, ctx=ctx)
 
     vlog('Running model...')
     t1 = time()
