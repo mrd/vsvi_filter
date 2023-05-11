@@ -3,6 +3,7 @@
 outfile="$1"
 
 [ -n "$outfile" ] || exit 1
+sqldir="$2"
 
 outshfile="$outfile.sh"
 npzfile="`grep 'Loading ' "$outfile" | sed -e 's/.*"\(.*\)"./\1/'`"
@@ -19,6 +20,13 @@ h4=$(($imgh / 4))
 hFor43Ratio=$(($w4 * 3 / 4))
 
 stem="`echo $jpgfile | cut -f 1 -d.`"
+imgid="`echo $stem | rev | cut -f 1 -d/ |rev`"
+if [ -n "$sqldir" ]; then
+  mkdir -p "$sqldir/`echo $stem | rev | cut -f 2 -d/ |rev`"
+  sqlfile="$sqldir/`echo $stem | cut -f 2- -d/`"_update.sql
+else
+  sqlfile=""
+fi
 
 matrixshape=`grep 'Matrix shape' "$outfile" | sed -e 's/.*(\([0-9, ]*\))./\1/'`
 matw=`echo $matrixshape | cut -f 2 -d ' '`
@@ -27,11 +35,27 @@ xs=`grep 'Found road centres' "$outfile" | sed -e 's/.*\[\([0-9 ]*\)\]./\1/'`
 ispano=
 
 if [ ! -n "`grep 'panoramic input' "$outfile"`" ]; then
+  echo Stem: $stem, Image ID: $imgid
+  xboundlo=$(($matw / 4))
+  xboundhi=$(($matw * 3 / 4))
+  echo Matrix width: $matw, boundaries: $xboundlo $xboundhi
   echo -n 'Non-panoramic. '
+  match=0
   if [ -z "$xs" ]; then
     echo No road found.
   else
     echo Road centres: \[ $xs \].
+    for x in $xs; do
+      if [[ $x -gt $xboundlo && $x -lt $xboundhi ]]; then
+        match=$x
+      fi
+    done
+  fi
+  if [ $match != 0 ]; then
+    echo Acceptable road centre: $match
+    echo "UPDATE image SET usable=true WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
+  else
+    echo "UPDATE image SET usable=false WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
   fi
   exit 0
 fi
@@ -39,6 +63,8 @@ fi
 cat > "$outshfile" << 'EOF'
 #!/bin/bash
 EOF
+
+echo -n | tee $sqlfile
 
 for x in $xs; do
   imgx=$(($imgw * $x / $matw))
@@ -61,6 +87,8 @@ for x in $xs; do
     xlo=$(($wrapimgx - $w8))
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
     echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
+    imgid2="${imgid}_x$imgx"
+    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -ge $xwrapneeded ]; then
     # must paste together the two sides of the image
     xlo=$(($imgx - $w8))
@@ -69,6 +97,8 @@ for x in $xs; do
     crop1="-crop ${w4_p1}x${hFor43Ratio}+$xlo+$h4"
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
     echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
+    imgid2="${imgid}_x$imgx"
+    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -lt $w8 ]; then
     # must paste together the two sides of the image
     w4_p1=$(($w8 - $imgx))
@@ -77,10 +107,14 @@ for x in $xs; do
     crop1="-crop ${w4_p1}x${hFor43Ratio}+$xhi+$h4"
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
     echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
+    imgid2="${imgid}_x$imgx"
+    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   else
     # straightforward crop
     xlo=$(($imgx - $w8))
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
     echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
+    imgid2="${imgid}_x$imgx"
+    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   fi
 done
