@@ -8,7 +8,19 @@ Have a recent version of Python3 and with pip: `pip install -r requirements.txt`
 
 ## `run_segm.py`
 
-Simple program to run semantic segmentation on an image
+Simple program to run semantic segmentation on images and output the result
+into accompanying '.npz' files for further processing.
+
+### Examples
+
+* Run with the first GPU on `image1.jpg`, in verbose mode:
+  - `./run_segm.py --gpu 0 -v image1.jpg`
+
+* Run on `image1.jpg` and recursively on directory `dir_of_jpgs`:
+  - `./run_segm.py -v -r image1.jpg dir_of_jpgs/`
+
+* Run recursively on `dir_of_pngs` and `dir_of_jpgs` looking for PNG and JPG files:
+* `./run_segm.py -v -e png jpeg jpg -r dir_of_pngs dir_of_jpgs/`
 
 ### Usage
 
