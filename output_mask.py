@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 import argparse
 import numpy as np
+from numpy.linalg import norm
 from pathlib import Path
 import sys
 from scipy.signal import find_peaks
+from skimage.exposure import is_low_contrast
+from skimage.util.dtype import dtype_range, dtype_limits
 from PIL import ImageDraw
 from gluoncv.utils.viz import get_color_pallete
 import cv2
+import math
+from scipy.stats import beta
 
 parser = argparse.ArgumentParser(prog='output_mask.py', description='Output image mask with possible road centres marked')
 parser.add_argument('filename', metavar='FILENAME', help='Saved numpy (.npz or .npy) file to process')
@@ -28,6 +33,84 @@ parser.add_argument('--houghlines-min-theta', metavar='THETA', default=None, typ
 parser.add_argument('--houghlines-max-theta', metavar='THETA', default=None, type=float, help='Hough transform MAX_THETA parameter')
 
 
+
+# https://stackoverflow.com/questions/58821130/how-to-calculate-the-contrast-of-an-image
+def rms_contrast(img):
+    img_grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return img_grey.std()
+
+def michaelson_contrast(img):
+    Y = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)[:,:,0]
+
+    # compute min and max of Y
+    min = np.min(Y).astype(np.float)
+    max = np.max(Y).astype(np.float)
+
+    # compute contrast
+    contrast = (max-min)/(max+min)
+    return contrast
+
+###################################################
+# https://towardsdatascience.com/measuring-enhancing-image-quality-attributes-234b0f250e10
+RED_SENSITIVITY = 0.299
+GREEN_SENSITIVITY = 0.587
+BLUE_SENSITIVITY = 0.114
+def convert_to_brightness_image(image: np.ndarray) -> np.ndarray:
+    if image.dtype == np.uint8:
+        raise ValueError("uint8 is not a good dtype for the image")
+
+    return np.sqrt(
+        image[..., 2] ** 2 * RED_SENSITIVITY
+        + image[..., 1] ** 2 * GREEN_SENSITIVITY
+        + image[..., 0] ** 2 * BLUE_SENSITIVITY
+    )
+def get_resolution(image: np.ndarray):
+    height, width = image.shape[:2]
+    return height * width
+
+def brightness_histogram(image: np.ndarray) -> np.ndarray:
+    nr_of_pixels = get_resolution(image)
+    brightness_image = convert_to_brightness_image(image)
+    hist, _ = np.histogram(brightness_image, bins=256, range=(0, 255))
+    return hist / nr_of_pixels
+def distribution_pmf(dist, start, stop, nr_of_steps):
+    xs = np.linspace(start, stop, nr_of_steps)
+    ys = dist.pdf(xs)
+    # divide by the sum to make a probability mass function
+    return ys / np.sum(ys)
+def correlation_distance(
+    distribution_a: np.ndarray, distribution_b: np.ndarray
+) -> float:
+    dot_product = np.dot(distribution_a, distribution_b)
+    squared_dist_a = np.sum(distribution_a ** 2)
+    squared_dist_b = np.sum(distribution_b ** 2)
+    return dot_product / math.sqrt(squared_dist_a * squared_dist_b)
+def compute_hdr(cv_image: np.ndarray):
+    img_brightness_pmf = brightness_histogram(np.float32(cv_image))
+    ref_pmf = distribution_pmf(beta(2, 2), 0, 1, 256)
+    return correlation_distance(ref_pmf, img_brightness_pmf)
+###################################################
+
+# Taken from skimage source code:
+def skimage_contrast(image, lower_percentile=1, upper_percentile=99):
+    image = np.asanyarray(image)
+
+    if image.dtype == bool:
+        return not ((image.max() == 1) and (image.min() == 0))
+
+    if image.ndim == 3:
+        from skimage.color import rgb2gray, rgba2rgb  # avoid circular import
+
+        if image.shape[2] == 4:
+            image = rgba2rgb(image)
+        if image.shape[2] == 3:
+            image = rgb2gray(image)
+
+    dlimits = dtype_limits(image, clip_negative=False)
+    limits = np.percentile(image, [lower_percentile, upper_percentile])
+    ratio = (limits[1] - limits[0]) / (dlimits[1] - dlimits[0])
+    return ratio
+
 # https://stackoverflow.com/questions/1066758/find-length-of-sequences-of-identical-values-in-a-numpy-array-run-length-encodi
 def rle(inarray):
     """ run length encoding. Partial credit to R rle function. 
@@ -43,6 +126,23 @@ def rle(inarray):
         z = np.diff(np.append(-1, i))       # run lengths
         p = np.cumsum(np.append(0, z))[:-1] # positions
         return(z, p, ia[i])
+
+# https://stackoverflow.com/questions/14243472/estimate-brightness-of-an-image-opencv
+def simple_brightness(img):
+    if len(img.shape) == 3:
+        # Colored RGB or BGR (*Do Not* use HSV images with this function)
+        # create brightness with euclidean norm
+        return np.average(norm(img, axis=2)) / np.sqrt(3)
+    else:
+        # Grayscale
+        return np.average(img)
+
+# http://alienryderflex.com/hsp.html
+def finley_brightness(img):
+    return np.average(np.sqrt(np.sum(img.reshape(-1,3).astype(np.float32)**2 * [0.114, 0.587, 0.299], axis=1)))
+
+def laplacian(image):
+    return cv2.Laplacian(image, cv2.CV_64F).var()
 
 def road_pixels_per_col(pred):
     a = pred == 0.0
@@ -77,6 +177,19 @@ def main():
     else:
         predict = np.load(filename)
         modelname = None
+
+    jpgfile = Path(filename).with_suffix('.jpg')
+    if jpgfile.exists():
+        img = cv2.imread(str(jpgfile))
+        vlog(f'Simple brightness: {simple_brightness(img)}')
+        vlog(f'Finley brightness: {finley_brightness(img)}')
+        vlog(f'Michaelson contrast: {michaelson_contrast(img)}')
+        vlog(f'RMS contrast: {rms_contrast(img)}')
+        rgbimg = img[:, :, ::-1]
+        vlog(f'Skimage contrast: {skimage_contrast(rgbimg)}')
+        vlog(f'Is low contrast?: {is_low_contrast(rgbimg, fraction_threshold=0.35)}')
+        vlog(f'HDR: {compute_hdr(img)}')
+        vlog(f'Laplacian: {laplacian(img)}')
 
     vlog(f'Matrix shape: {predict.shape}.')
     if predict.shape[1] >= predict.shape[0] * 2:
