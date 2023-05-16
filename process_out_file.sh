@@ -53,9 +53,9 @@ if [ ! -n "`grep 'panoramic input' "$outfile"`" ]; then
   fi
   if [ $match != 0 ]; then
     echo Acceptable road centre: $match
-    echo "UPDATE image SET usable=true WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
+    echo "UPDATE image SET enabled=true WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
   else
-    echo "UPDATE image SET usable=false WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
+    echo "UPDATE image SET enabled=false WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
   fi
   exit 0
 fi
@@ -88,7 +88,7 @@ for x in $xs; do
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
     echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
-    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
+    echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -ge $xwrapneeded ]; then
     # must paste together the two sides of the image
     xlo=$(($imgx - $w8))
@@ -98,7 +98,7 @@ for x in $xs; do
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
     echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
-    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
+    echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -lt $w8 ]; then
     # must paste together the two sides of the image
     w4_p1=$(($w8 - $imgx))
@@ -108,13 +108,13 @@ for x in $xs; do
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
     echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
-    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
+    echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   else
     # straightforward crop
     xlo=$(($imgx - $w8))
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
     echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
-    echo "UPDATE image SET usable=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
+    echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   fi
 done
