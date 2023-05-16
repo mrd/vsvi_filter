@@ -11,6 +11,7 @@ import cv2
 parser = argparse.ArgumentParser(prog='output_mask.py', description='Output image mask with possible road centres marked')
 parser.add_argument('filename', metavar='FILENAME', help='Saved numpy (.npz or .npy) file to process')
 parser.add_argument('--verbose', '-v', action='store_true', default=False, help='Run in verbose mode')
+parser.add_argument('--log', action='store_true', default=False, help='Save verbose output to .out file')
 parser.add_argument('--blur', action='store_true', default=False, help='Run Gaussian blur before finding edges')
 parser.add_argument('--maskfile', '-m', metavar='FILENAME', default=None, help='Output filename for mask image')
 parser.add_argument('--edgefile', '-e', metavar='FILENAME', default=None, help='Output filename for edges image')
@@ -57,7 +58,12 @@ def road_centres(pred, distance=2000, prominence=100):
 
 def main():
     args = parser.parse_args()
+    if args.log:
+        outfile = Path(args.filename).with_suffix('.out')
+        logfp = open(outfile, 'w')
     def vlog(s):
+        if args.log:
+            logfp.write(f'{s}\n')
         if args.verbose:
             print(s)
 
@@ -192,6 +198,8 @@ def main():
     if args.maskfile:
         vlog(f'Writing mask image to "{args.maskfile}".')
         mask.save(args.maskfile)
+    if args.log:
+        logfp.close()
 
 if __name__=='__main__':
     main()
