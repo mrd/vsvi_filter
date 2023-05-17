@@ -89,7 +89,7 @@ for x in $xs; do
     echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
     echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
-  elif [ $imgx -ge $xwrapneeded ]; then
+  elif [ $imgx -gt $xwrapneeded ]; then
     # must paste together the two sides of the image
     xlo=$(($imgx - $w8))
     w4_p1=$(($imgw - $xlo))
