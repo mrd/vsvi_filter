@@ -1,5 +1,11 @@
 #!/bin/bash
 
+HDR_threshold=0.35
+HDR_rejectdir=HDR_rejects
+Skimage_contrast_threshold=0.35
+HDR_floor=0.8
+Skimage_contrast_rejectdir=Skimage_rejects
+
 outfile="$1"
 
 [ -n "$outfile" ] || exit 1
@@ -51,8 +57,24 @@ if [ ! -n "`grep 'panoramic input' "$outfile"`" ]; then
       fi
     done
   fi
-  if [ $match != 0 ]; then
-    echo Acceptable road centre: $match
+  hdr="`grep 'HDR:' "$outfile" | cut -f2 -d' '`"
+  hdr_awk="{ print (\$1 > \$2) }"
+  hdrtest=`echo "$hdr $HDR_threshold" | awk -- "$hdr_awk"`
+  echo "HDR: $hdr"
+  skcon="`grep 'Skimage contrast:' "$outfile" | cut -f3 -d' '`"
+  # Account for low contrast images with a reasonably high level of HDR
+  # $skcon + max(0, $hdr - HDR_floor) < Skimage_contrast_threshold?
+  contrast_awk="{ print(\$1 + (\$2 - \$4 > 0 ? \$2 - \$4 : 0) > \$3) }"
+  skcontest=`echo "$skcon $hdr $Skimage_contrast_threshold $HDR_floor" | awk -- "$contrast_awk"`
+  echo "Skimage contrast: $skcon"
+  if (( $hdrtest == 0 )); then
+    mkdir -p $HDR_rejectdir
+    cp $outfile $jpgfile $npzfile $HDR_rejectdir
+  elif (( $skcontest == 0 )); then
+    mkdir -p $Skimage_contrast_rejectdir
+    cp $outfile $jpgfile $npzfile $Skimage_contrast_rejectdir
+  elif (( $match != 0 && $hdrtest == 1 && $skcontest == 1 )); then
+    echo Acceptable image quality and road centre: $match
     echo "UPDATE image SET enabled=true WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
   else
     echo "UPDATE image SET enabled=false WHERE position('$imgid.jpg' in system_path) > 0;" | tee $sqlfile
