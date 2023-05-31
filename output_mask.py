@@ -149,7 +149,7 @@ def road_pixels_per_col(pred):
     out = np.zeros(a.shape[1])
     for i in range(a.shape[1]):
       (z, p, v) = rle(a[:,i])
-      out[i]=z[v.nonzero()].max(initial=0)
+      out[i]=z[np.logical_and(p > a.shape[0]/4, v != 0)].max(initial=0)
     return out
 
 def road_centres(pred, distance=2000, prominence=100):
