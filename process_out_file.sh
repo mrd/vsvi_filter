@@ -36,13 +36,15 @@ fi
 
 matrixshape=`grep 'Matrix shape' "$outfile" | sed -e 's/.*(\([0-9, ]*\))./\1/'`
 matw=`echo $matrixshape | cut -f 2 -d ' '`
+matw4=$(($matw / 4))
+matw8=$(($matw / 8))
 xs=`grep 'Found road centres' "$outfile" | sed -e 's/.*\[\([0-9 ]*\)\]./\1/'`
 
 ispano=
 
 if [ ! -n "`grep 'panoramic input' "$outfile"`" ]; then
   echo Stem: $stem, Image ID: $imgid
-  xboundlo=$(($matw / 4))
+  xboundlo=$matw4
   xboundhi=$(($matw * 3 / 4))
   echo Matrix width: $matw, boundaries: $xboundlo $xboundhi
   echo -n 'Non-panoramic. '
@@ -88,14 +90,35 @@ EOF
 
 echo -n | tee $sqlfile
 
+xs2=""
 for x in $xs; do
+  xleft=$(($x - $matw8 + 10))
+  xright=$(($x + $matw8 - 10))
+  echo $x $xleft $xright
+  if [ $xleft -lt 0 ]; then
+    xleft=$(($xleft + $matw))
+  elif [ $xright -ge $matw ]; then
+    xright=$(($xright - $matw))
+  fi
+  xs2="$xs2 $xleft $x $xright"
+done
+
+xcompleted=""
+
+for x in $xs2; do
   imgx=$(($imgw * $x / $matw))
+  outjpgfile="${stem}_x$imgx.jpg"
+  testprefix="[ -e '$outjpgfile' ] || "
 
   match=0
   wrapx=$(($x - $matw))
   # ugly but effective test for duplicates due to wrap
-  for y in $xs; do
+  for y in $xs2; do
     [ $wrapx == $y ] && match=1
+  done
+  # find straight-up duplicates
+  for y in $xcompleted; do
+    [ $x == $y ] && match=1
   done
 
   if [ $match == 1 ]; then
@@ -108,7 +131,7 @@ for x in $xs; do
     wrapimgx=$(($imgw * $wrapx / $matw))
     xlo=$(($wrapimgx - $w8))
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
-    echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
+    echo "$testprefix" convert "$jpgfile" "$crop" "$outjpgfile" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
     echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -gt $xwrapneeded ]; then
@@ -118,7 +141,7 @@ for x in $xs; do
     w4_p2=$(($w4 - $w4_p1))
     crop1="-crop ${w4_p1}x${hFor43Ratio}+$xlo+$h4"
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
-    echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
+    echo "$testprefix" convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "$outjpgfile" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
     echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   elif [ $imgx -lt $w8 ]; then
@@ -128,15 +151,16 @@ for x in $xs; do
     w4_p2=$(($w4 - $w4_p1))
     crop1="-crop ${w4_p1}x${hFor43Ratio}+$xhi+$h4"
     crop2="-crop ${w4_p2}x${hFor43Ratio}+0+$h4"
-    echo convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "${stem}_x$imgx.jpg" >> "$outshfile"
+    echo "$testprefix" convert \\\( "$jpgfile" "$crop1" \\\) \\\( "$jpgfile" "$crop2" \\\) +append "$outjpgfile" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
     echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   else
     # straightforward crop
     xlo=$(($imgx - $w8))
     crop="-crop ${w4}x${hFor43Ratio}+$xlo+$h4"
-    echo convert "$jpgfile" "$crop" "${stem}_x$imgx.jpg" >> "$outshfile"
+    echo "$testprefix" convert "$jpgfile" "$crop" "$outjpgfile" >> "$outshfile"
     imgid2="${imgid}_x$imgx"
     echo "UPDATE image SET enabled=true WHERE position('$imgid2.jpg' in system_path) > 0;" | tee -a $sqlfile
   fi
+  xcompleted="$xcompleted $x"
 done
